@@ -934,18 +934,7 @@ namespace AZ
                 // add material data
                 if (material)
                 {
-                    // irradiance color
-                    RPI::MaterialPropertyIndex propertyIndex = material->FindPropertyIndex(AZ::Name("irradiance.color"));
-                    if (propertyIndex.IsValid())
-                    {
-                        subMesh.m_irradianceColor = material->GetPropertyValue<AZ::Color>(propertyIndex);
-                    }
-
-                    propertyIndex = material->FindPropertyIndex(AZ::Name("irradiance.factor"));
-                    if (propertyIndex.IsValid())
-                    {
-                        subMesh.m_irradianceColor *= material->GetPropertyValue<float>(propertyIndex);
-                    }
+                    RPI::MaterialPropertyIndex propertyIndex;
 
                     // base color
                     propertyIndex = material->FindPropertyIndex(AZ::Name("baseColor.color"));
@@ -958,6 +947,31 @@ namespace AZ
                     if (propertyIndex.IsValid())
                     {
                         subMesh.m_baseColor *= material->GetPropertyValue<float>(propertyIndex);
+                    }
+
+                    // irradiance color
+                    subMesh.m_irradianceColor = subMesh.m_baseColor; // Default starting point is base color
+
+                    propertyIndex = material->FindPropertyIndex(AZ::Name("irradiance.manualOverride"));
+                    if (propertyIndex.IsValid() && material->GetPropertyValue<bool>(propertyIndex))
+                    {
+                        // override requested
+                        RPI::MaterialPropertyIndex propertyIndex = material->FindPropertyIndex(AZ::Name("irradiance.overrideColor"));
+                        if (propertyIndex.IsValid())
+                        {
+                            subMesh.m_irradianceColor = material->GetPropertyValue<AZ::Color>(propertyIndex);
+                        }
+                        else
+                        {
+                            AZ_Warning("MeshFeatureProcessor", false, "Requested manual override for "
+                                    "Irradiance color, but could not find a provided override color.");
+                        }
+                    }
+
+                    propertyIndex = material->FindPropertyIndex(AZ::Name("irradiance.factor"));
+                    if (propertyIndex.IsValid())
+                    {
+                        subMesh.m_irradianceColor *= material->GetPropertyValue<float>(propertyIndex);
                     }
 
                     // metallic
