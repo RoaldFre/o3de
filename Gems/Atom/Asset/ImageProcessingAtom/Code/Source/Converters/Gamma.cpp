@@ -122,6 +122,16 @@ namespace ImageProcessingAtom
     static FunctionLookupTable<1024> s_lutGammaToLinear(AZ::Color::ConvertSrgbGammaToLinear, 0.04045f, 0.00001f);
     static FunctionLookupTable<1024> s_lutLinearToGamma(AZ::Color::ConvertSrgbLinearToGamma, 0.05f, 0.00001f);
 
+    float SrgbGammaToLinearLut(float x)
+    {
+        return s_lutGammaToLinear.compute(x);
+    }
+
+    float SrgbLinearToGammaLut(float x)
+    {
+        return s_lutLinearToGamma.compute(x);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////////////////////////////////////////////////////

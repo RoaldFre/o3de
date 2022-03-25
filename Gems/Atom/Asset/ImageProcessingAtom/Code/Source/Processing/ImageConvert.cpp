@@ -534,26 +534,23 @@ namespace ImageProcessingAtom
     // Set (alpha-weighted) average color computed from given mip
     bool ImageConvertProcess::SetAverageColor(AZ::u32 mip)
     {
-        // We only work with pixel format rgba32f
         const EPixelFormat srcPixelFormat = m_image->Get()->GetPixelFormat();
-        if (srcPixelFormat != ePixelFormat_R32G32B32A32F)
+        bool hasGamma =  m_image->Get()->HasImageFlags(EIF_SRGBRead);
+        if (!CPixelFormats::GetInstance().IsPixelFormatUncompressed(srcPixelFormat))
         {
-            AZ_Assert(false, "I only work with pixel format rgba32f");
-            return false;
-        }
-        // ...and we require a linear (non-sRGB) color space
-        if (m_image->Get()->HasImageFlags(EIF_SRGBRead))
-        {
-            AZ_Assert(false, "I only work with a linear (non-sRGB) color space");
+            // We need an uncompressed format to create a PixelOperation and for our pixelBytes computation.
+            AZ_Error("Image Processing", false, "%s only works with uncompressed pixel formats.", __FUNCTION__);
             return false;
         }
 
-        IPixelOperationPtr pixelOp = CreatePixelOperation(srcPixelFormat);
+        // Get the number of bytes per pixel (note: bitsPerBlock / 8 is only valid for uncompressed format)
         AZ::u32 pixelBytes = CPixelFormats::GetInstance().GetPixelFormatInfo(srcPixelFormat)->bitsPerBlock / 8;
         AZ::u8* pixelBuf;
         AZ::u32 pitch;
         m_image->Get()->GetImagePointer(mip, pixelBuf, pitch);
         const AZ::u32 pixelCount = m_image->Get()->GetPixelCount(mip);
+
+        IPixelOperationPtr pixelOp = CreatePixelOperation(srcPixelFormat);
 
         // Accumulate weighted pixel colors and alpha
         float weightedRgbSum[3] = {0.0f, 0.0f, 0.0f};
@@ -562,6 +559,13 @@ namespace ImageProcessingAtom
         {
             float R,G,B,A;
             pixelOp->GetRGBA(pixelBuf, R, G, B, A);
+            if (hasGamma)
+            {
+                R = SrgbGammaToLinearLut(R);
+                G = SrgbGammaToLinearLut(G);
+                B = SrgbGammaToLinearLut(B);
+            }
+
             // Alpha-weighted sum for the R,G,B channels:
             weightedRgbSum[0] += A * R;
             weightedRgbSum[1] += A * G;
@@ -578,6 +582,12 @@ namespace ImageProcessingAtom
             avgColor.SetB(weightedRgbSum[2] / alphaSum);
             avgColor.SetA(alphaSum / pixelCount);
         }
+
+        if (hasGamma)
+        {
+            avgColor.LinearToGamma();
+        }
+
         m_image->Get()->SetAverageColor(avgColor);
 
         return true;

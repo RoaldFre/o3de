@@ -54,6 +54,10 @@ namespace ImageProcessingAtom
     //Convert a (potentially compressed, potentially sRGB) image to linear RGBA32.
     IImageObjectPtr GetUncompressedLinearImage(IImageObjectPtr image);
 
+    //Convert between linear and sRGB values using a lookup table.
+    float SrgbGammaToLinearLut(float x);
+    float SrgbLinearToGammaLut(float x);
+
     //get output image size and mip count based on the texture setting and preset setting
 
     //other helper functions
