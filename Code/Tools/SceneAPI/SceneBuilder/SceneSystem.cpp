@@ -43,72 +43,37 @@ namespace AZ
             /* Conversion factor for converting from centimeters to meters */
             m_unitSizeInMeters = m_unitSizeInMeters * .01f;
 
-            AZStd::pair<AssImpSDKWrapper::AssImpSceneWrapper::AxisVector, int32_t> upAxisAndSign = assImpScene->GetUpVectorAndSign();
+            auto [upAxis, upAxisSign] = assImpScene->GetUpVectorAndSign();
+            auto [frontAxis, frontAxisSign] = assImpScene->GetFrontVectorAndSign();
 
-            if (upAxisAndSign.second <= 0)
+            // Get the up and forward direction vector of the loaded model.
+            // Note that the *forward* direction (forward direction of the coordinate system) is the
+            // reverse of fbx's *front* direction (or "viewer" direction), which points towards the
+            // observer, i.e. towards the backwards direction of the coordinate system.
+            AZ::Vector4 upVec(0.0f);
+            AZ::Vector4 forwardVec(0.0f);
+            upVec.SetElement(static_cast<int32_t>(upAxis), upAxisSign);
+            forwardVec.SetElement(static_cast<int32_t>(frontAxis), -frontAxisSign);
+
+            // Get a side vector by setting the up and front components to zero
+            AZ::Vector4 sideVecNoSign(1.0f, 1.0f, 1.0f, 0.0f);
+            sideVecNoSign.SetElement(static_cast<int32_t>(upAxis), 0.0f);
+            sideVecNoSign.SetElement(static_cast<int32_t>(frontAxis), 0.0f);
+
+            AZ::Vector4 wVec(0.0f, 0.0f, 0.0f, 1.0f);
+
+            // Conversion to the native O3DE coordinate system.
+            // Goal: +Z up, +Y forward (aka '-Y front'), keep the system right handed (i.e. det(adjustmatrix) == +1)
+            // -> Shuffle the basis vectors in the order that we want them for our coordinate system
+            AZ::Matrix4x4 adjustmatrix    = AZ::Matrix4x4::CreateFromRows( sideVecNoSign, forwardVec, upVec, wVec);
+            AZ::Matrix4x4 adjustmatrixNeg = AZ::Matrix4x4::CreateFromRows(-sideVecNoSign, forwardVec, upVec, wVec);
+            if (AssImpSDKWrapper::AssImpTypeConverter::ToTransform(adjustmatrix).GetDeterminant3x3() < 0)
             {
-                AZ_TracePrintf(SceneAPI::Utilities::ErrorWindow, "Negative scene orientation is not a currently supported orientation.");
-                return;
+                adjustmatrix = adjustmatrixNeg; // the side vector needs a negative sign to preserve right-handedness
             }
 
-            AZStd::pair<AssImpSDKWrapper::AssImpSceneWrapper::AxisVector, int32_t> frontAxisAndSign = assImpScene->GetFrontVectorAndSign();
-
-            if (upAxisAndSign.first != AssImpSDKWrapper::AssImpSceneWrapper::AxisVector::Z &&
-                upAxisAndSign.first != AssImpSDKWrapper::AssImpSceneWrapper::AxisVector::Unknown)
-            {
-                AZ::Matrix4x4 currentCoordMatrix = AZ::Matrix4x4::CreateIdentity();
-                //(UpVector = +Z, FrontVector = +Y, CoordSystem = -X(RightHanded))
-                AZ::Matrix4x4 targetCoordMatrix = AZ::Matrix4x4::CreateFromColumns(
-                    AZ::Vector4(-1, 0, 0, 0),
-                    AZ::Vector4(0, 0, 1, 0),
-                    AZ::Vector4(0, 1, 0, 0),
-                    AZ::Vector4(0, 0, 0, 1));
-
-                switch (upAxisAndSign.first)
-                {
-                case AssImpSDKWrapper::AssImpSceneWrapper::AxisVector::X: {
-                    if (frontAxisAndSign.second == 1)
-                    {
-                        currentCoordMatrix = AZ::Matrix4x4::CreateFromColumns(
-                            AZ::Vector4(0, -1, 0, 0),
-                            AZ::Vector4(1, 0, 0, 0),
-                            AZ::Vector4(0, 0, 1, 0),
-                            AZ::Vector4(0, 0, 0, 1));
-                    }
-                    else
-                    {
-                        currentCoordMatrix = AZ::Matrix4x4::CreateFromColumns(
-                            AZ::Vector4(0, 1, 0, 0),
-                            AZ::Vector4(1, 0, 0, 0),
-                            AZ::Vector4(0, 0, -1, 0),
-                            AZ::Vector4(0, 0, 0, 1));
-                    }
-                }
-                break;
-                case AssImpSDKWrapper::AssImpSceneWrapper::AxisVector::Y: {
-                    if (frontAxisAndSign.second == 1)
-                    {
-                        currentCoordMatrix = AZ::Matrix4x4::CreateFromColumns(
-                            AZ::Vector4(1, 0, 0, 0),
-                            AZ::Vector4(0, 1, 0, 0),
-                            AZ::Vector4(0, 0, 1, 0),
-                            AZ::Vector4(0, 0, 0, 1));
-                    }
-                    else
-                    {
-                        currentCoordMatrix = AZ::Matrix4x4::CreateFromColumns(
-                            AZ::Vector4(-1, 0, 0, 0),
-                            AZ::Vector4(0, 1, 0, 0),
-                            AZ::Vector4(0, 0, -1, 0),
-                            AZ::Vector4(0, 0, 0, 1));
-                    }
-                }
-                break;
-                }
-                AZ::Matrix4x4 adjustmatrix = targetCoordMatrix * currentCoordMatrix.GetInverseTransform();
-                m_adjustTransform.reset(new DataTypes::MatrixType(AssImpSDKWrapper::AssImpTypeConverter::ToTransform(adjustmatrix)));
-                m_adjustTransformInverse.reset(new DataTypes::MatrixType(m_adjustTransform->GetInverseFull()));
-            }
+            m_adjustTransform.reset(new DataTypes::MatrixType(AssImpSDKWrapper::AssImpTypeConverter::ToTransform(adjustmatrix)));
+            m_adjustTransformInverse.reset(new DataTypes::MatrixType(m_adjustTransform->GetInverseFull()));
         }
 
         void SceneSystem::SwapVec3ForUpAxis(Vector3& swapVector) const
